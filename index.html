@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Инструкция по использованию Kafka в Spring Boot</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        h1 {
+            color: #0056b3;
+            text-align: center;
+        }
+        h2 {
+            color: #003366;
+            margin-top: 20px;
+        }
+        pre {
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        p {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Инструкция по использованию Kafka в Spring Boot</h1>
+
+    <h2>Общая информация</h2>
+    <p>На виртуальном сервере уже запущен Kafka на порту <code>195.38.164.139:9092</code>. Арген и Манап провели необходимые настройки и обеспечили работу Kafka на сервере. Kafka — это распределённая платформа для обработки потоков данных, которая позволяет эффективно обмениваться сообщениями между сервисами в рамках микросервисной архитектуры.</p>
+    <p>Kafka использует концепцию «тем» для маршрутизации сообщений. Приложения, работающие как производители (producers), отправляют сообщения в темы, в то время как потребители (consumers) считывают данные из тем. Это позволяет обеспечить гибкость и надёжность обработки данных.</p>
+    <p>Эта статья поможет вам интегрировать Kafka в Spring Boot проект, а также даст практические советы по использованию.</p>
+
+    <h2>Подключение к Kafka</h2>
+    <p>Первым шагом нужно указать адрес сервера Kafka в файле <code>application.properties</code>:</p>
+    <pre><code class="language-properties">spring.kafka.bootstrap-servers=195.38.164.139:9092</code></pre>
+    <p>Этот параметр говорит приложению, куда отправлять и откуда принимать сообщения.</p>
+
+    <h2>Конфигурация Producer (производитель)</h2>
+    <p>Производитель используется для отправки сообщений в Kafka. Это полезно, если ваше приложение генерирует данные, которые должны быть обработаны другими сервисами. Например, вы можете использовать производителя для отправки событий, журналов или любых других данных. Производитель работает как отправитель сообщений в определённые темы.</p>
+    <p>Для настройки производителя создаётся класс <code>KafkaProducerConfig</code>, который определяет параметры подключения:</p>
+    <pre><code class="language-java">@Configuration
+public class KafkaProducerConfig {
+    @Value("${spring.kafka.bootstrap-servers}")
+    private String bootstrapServers;
+
+    public Map<String, Object> producerConfig() {
+        HashMap<String, Object> props = new HashMap<>();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        return props;
+    }
+
+    @Bean
+    public ProducerFactory<String, String> producerFactory() {
+        return new DefaultKafkaProducerFactory<>(producerConfig());
+    }
+
+    @Bean
+    public KafkaTemplate<String, String> kafkaTemplate(ProducerFactory<String, String> producerFactory) {
+        return new KafkaTemplate<>(producerFactory);
+    }
+}</code></pre>
+    <p>Класс <code>KafkaProducerConfig</code> создаёт конфигурацию для отправки сообщений. Ключевые параметры включают адрес сервера Kafka и сериализаторы данных. Сериализаторы преобразуют данные в формат, подходящий для передачи через Kafka.</p>
+    <p><strong>Пример использования производителя:</strong></p>
+    <pre><code class="language-java">KafkaTemplate<String, String> kafkaTemplate = ...;
+kafkaTemplate.send("azarft", "Пример сообщения");</code></pre>
+    <p>Этот код отправляет сообщение в тему <code>azarft</code>. Убедитесь, что тема создана заранее, или настройте её с помощью класса конфигурации темы.</p>
+
+    <h2>Конфигурация Consumer (потребитель)</h2>
+    <p>Потребитель отвечает за получение сообщений из Kafka. Это полезно для обработки данных, которые были отправлены производителем. Например, потребитель может обрабатывать заказы, события или любые другие данные, поступающие из Kafka. Потребители читают сообщения из указанных тем, используя группы потребителей для распределения нагрузки.</p>
+    <p>Для настройки потребителя создаётся класс <code>KafkaConsumerConfig</code>, который определяет параметры подключения:</p>
+    <pre><code class="language-java">@Configuration
+public class KafkaConsumerConfig {
+    @Value("${spring.kafka.bootstrap-servers}")
+    private String bootstrapServers;
+
+    public Map<String, Object> consumerConfig() {
+        HashMap<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        return props;
+    }
+
+    @Bean
+    public ConsumerFactory<String, String> consumerFactory() {
+        return new DefaultKafkaConsumerFactory<>(consumerConfig());
+    }
+
+    @Bean
+    public KafkaListenerContainerFactory<ConcurrentMessageListenerContainer<String, String>> factory(
+            ConsumerFactory<String, String> consumerFactory) {
+        ConcurrentKafkaListenerContainerFactory<String, String> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory);
+        return factory;
+    }
+}</code></pre>
+    <p>Класс <code>KafkaConsumerConfig</code> определяет параметры подключения потребителя, такие как адрес сервера и десериализаторы. Десериализаторы преобразуют полученные данные из байтов в строку или другой нужный формат.</p>
+    <p><strong>Пример использования потребителя:</strong></p>
+    <pre><code class="language-java">@KafkaListener(topics = "azarft", groupId = "groupId")
+public void listen(String message) {
+    System.out.println("Получено сообщение: " + message);
+}</code></pre>
+    <p>Этот код слушает сообщения из темы <code>azarft</code> и выводит их в консоль.</p>
+
+    <h2>Обработка ошибок</h2>
+    <p>Если сообщение не удаётся отправить, можно использовать обратные вызовы (callbacks) для логирования ошибок. Это позволяет обработать ситуацию, когда сервер Kafka временно недоступен или произошла ошибка при сериализации данных.</p>
+    <pre><code class="language-java">kafkaTemplate.send("azarft", "сообщение").addCallback(
+    success -> System.out.println("Сообщение успешно отправлено"),
+    failure -> System.err.println("Ошибка отправки: " + failure.getMessage())
+);</code></pre>
+    <p>Такие обратные вызовы позволяют лучше контролировать процесс отправки сообщений.</p>
+
+    <h2>Настройка темы</h2>
+    <p>Темы — это логические каналы, через которые Kafka обменивается сообщениями. Настройка темы выполняется в классе <code>KafkaTopicConfig</code>:</p>
+    <pre><code class="language-java">@Configuration
+public class KafkaTopicConfig {
+    @Bean
+    public NewTopic azarsTopic() {
+        return TopicBuilder.name("azarft").build();
+    }
+}</code></pre>
+    <p>Этот код создаёт тему <code>azarft</code>, если она ещё не существует. Темы можно настроить с дополнительными параметрами, такими как количество разделов и фактор репликации.</p>
+
+    <h2>Обработка сообщений</h2>
+    <p>Для обработки сообщений создаётся класс <code>KafkaListeners</code>. Пример:</p>
+    <pre><code class="language-java">@Component
+public class KafkaListeners {
+    @KafkaListener(topics = "azarft", groupId = "groupId")
+    void listener(String data) {
+        System.out.println("Получено сообщение: " + data);
+    }
+}</code></pre>
+    <p>Этот код выводит данные в консоль, что полезно для тестирования. В продакшене обработка сообщений может включать запись в базу данных, вызов других сервисов или выполнение других действий.</p>
+
+    <h2>Отправка сообщений через API</h2>
+    <p>REST API позволяет отправлять сообщения в Kafka. Вот пример класса <code>KafkaController</code>:</p>
+    <pre><code class="language-java">@RestController
+@RequestMapping("/kafka/message")
+public class KafkaController {
+    private final KafkaTemplate<String, String> kafkaTemplate;
+
+    public KafkaController(KafkaTemplate<String, String> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @PostMapping
+    public ResponseEntity<String> sendMessage(@RequestParam String message) {
+        kafkaTemplate.send("azarft", message);
+        return new ResponseEntity<>("Сообщение успешно отправлено!", HttpStatus.OK);
+    }
+}</code></pre>
+    <p>Этот контроллер позволяет отправлять сообщения через HTTP-запросы, что упрощает интеграцию с другими системами.</p>
+    <p><strong>Пример использования:</strong></p>
+    <pre><code class="language-bash">curl -X POST "http://localhost:8080/kafka/message?message=ПриветKafka"</code></pre>
+    <p>Этот запрос отправит сообщение <code>ПриветKafka</code> в тему <code>azarft</code>.</p>
+<footer style="margin-top: 20px; text-align: center; font-size: 14px; color: #666;">
+    <p>Авторы: Арген Азанов, Манап Кошоев</p>
+</footer>
+
+</body>
+</html>
